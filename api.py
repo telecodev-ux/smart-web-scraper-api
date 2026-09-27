@@ -1,9 +1,8 @@
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware  
 from playwright.sync_api import sync_playwright
 from google import genai
-from google.genai.errors import ServerError
-import time
 
 # Inicializamos la aplicación FastAPI
 app = FastAPI(
@@ -12,6 +11,7 @@ app = FastAPI(
     version="1.0"
 )
 
+# Configuración de seguridad CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -20,10 +20,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Conectamos el cerebro con tu clave de Google AI Studio
-# AHORA (seguro y profesional):
-import os
+# Conectamos el cliente moderno de Google GenAI SDK
 cliente = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+
 @app.get("/")
 def home():
     return {"estado": "activo", "mensaje": "El microservicio del agente autónomo está listo para operar."}
@@ -50,7 +49,7 @@ def ejecutar_agente(url: str, objetivo: str = "Haz un resumen de esta página"):
         
         print("🧠 [API] Procesando los datos extraídos con Gemini...")
         
-        # 2. PROCESAMIENTO DINÁMICO CON GEMINI
+        # 2. PROCESAMIENTO DINÁMICO CON GEMINI (Uso de cliente.models.generate_content)
         prompt = f"""
         Eres un agente de inteligencia corporativa de alto nivel.
         He extraído en bruto el texto de esta página web: {url}
@@ -66,7 +65,10 @@ def ejecutar_agente(url: str, objetivo: str = "Haz un resumen de esta página"):
         cookies o textos basura. Devuelve la información limpia, directa y bien estructurada.
         """
         
-        respuesta = model.generate_content(prompt)
+        respuesta = cliente.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
 
         return {
             "exito": True,
