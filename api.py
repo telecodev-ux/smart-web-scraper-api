@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware  
 from playwright.sync_api import sync_playwright
 from google import genai
 from google.genai.errors import ServerError
@@ -9,6 +10,14 @@ app = FastAPI(
     title="Agente Autónomo RPA API",
     description="API industrial de automatización web y procesamiento con IA",
     version="1.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],  
+    allow_headers=["*"],
 )
 
 # Conectamos el cerebro con tu clave de Google AI Studio
