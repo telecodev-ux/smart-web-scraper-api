@@ -29,57 +29,51 @@ def home():
     return {"estado": "activo", "mensaje": "El microservicio del agente autónomo está listo para operar."}
 
 @app.get("/ejecutar-agente")
-def ejecutar_agente(tema: str = "Ciberseguridad"):
+def ejecutar_agente(url: str, objetivo: str = "Haz un resumen de esta página"):
     try:
+        print(f"🕵️ [API] Entrando en la URL: {url}")
+        
+        # 1. NAVEGACIÓN UNIVERSAL CON PLAYWRIGHT
         with sync_playwright() as p:
-            # Lanzamos el navegador en modo headless=True para entornos de servidor (como Render)
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             
-            print(f"🌐 [API] El agente entra a Wikipedia para buscar: {tema}")
-            page.goto("https://es.wikipedia.org")
+            # Vamos a la web que pide el cliente (con tiempo extra por si es lenta)
+            page.goto(url, timeout=60000)
             
-            page.fill("input[name='search']", tema)
-            page.press("input[name='search']", "Enter")
-            
-            page.wait_for_selector("p")
-            
-            todos_los_parrafos = page.locator("p").all_inner_texts()
-            parrafos_reales = [texto for texto in todos_los_parrafos if len(texto.strip()) > 20]
-            contenido_bruto = "\n".join(parrafos_reales[:3])
-            
+            # Extraemos TODO el texto visible de la página (ignorando el código fuente oculto)
+            texto_web = page.inner_text("body")
             browser.close()
-            
-            print("🧠 [API] Procesando información con Inteligencia Artificial...")
-            prompt = f"""
-            Eres un consultor experto. Analiza el siguiente texto obtenido de una búsqueda automatizada sobre '{tema}'
-            y redacta 3 recomendaciones clave o conclusiones estratégicas que una empresa deba conocer.
-            
-            Texto bruto: {contenido_bruto}
-            """
-            
-            # Lógica de reintento ante saturación 503
-            intentos = 3
-            respuesta_texto = ""
-            for intento in range(intentos):
-                try:
-                    respuesta = cliente.models.generate_content(
-                        model='gemini-3.8-flash',
-                        contents=prompt,
-                    )
-                    respuesta_texto = respuesta.text
-                    break
-                except ServerError:
-                    if intento < intentos - 1:
-                        time.sleep(3)
-                    else:
-                        raise HTTPException(status_code=503, detail="Servidores de Google saturados temporalmente.")
-            
-            return {
-                "exito": True,
-                "tema_buscado": tema,
-                "reporte_ia": respuesta_texto
-            }
+
+        # Cortamos un poco el texto por si la web es gigantesca
+        texto_limpio = texto_web[:20000] 
+        
+        print("🧠 [API] Procesando los datos extraídos con Gemini...")
+        
+        # 2. PROCESAMIENTO DINÁMICO CON GEMINI
+        prompt = f"""
+        Eres un agente de inteligencia corporativa de alto nivel.
+        He extraído en bruto el texto de esta página web: {url}
+        
+        El cliente te ha dado esta orden exacta: "{objetivo}"
+        
+        Texto extraído de la web:
+        ---
+        {texto_limpio}
+        ---
+        
+        Analiza el texto y cumple la orden del cliente. Ignora los menús de navegación, 
+        cookies o textos basura. Devuelve la información limpia, directa y bien estructurada.
+        """
+        
+        respuesta = model.generate_content(prompt)
+
+        return {
+            "exito": True,
+            "url_analizada": url,
+            "objetivo_cliente": objetivo,
+            "reporte_ia": respuesta.text
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
