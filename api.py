@@ -1,58 +1,76 @@
 from fastapi import FastAPI, HTTPException
-import requests
-from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
+from google import genai
+from google.genai.errors import ServerError
+import time
 
-# Inicializamos la API
+# Inicializamos la aplicación FastAPI
 app = FastAPI(
-    title="Smart Web Scraper API", 
-    description="API para extraer encabezados y enlaces de cualquier URL"
+    title="Agente Autónomo RPA API",
+    description="API industrial de automatización web y procesamiento con IA",
+    version="1.0"
 )
 
-# Creamos el punto de acceso (endpoint)
-@app.get("/extraer/")
-def extraer_datos(url: str):
-    if not url.startswith("http"):
-        raise HTTPException(status_code=400, detail="La URL debe empezar por http:// o https://")
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-    
+# Conectamos el cerebro con tu clave de Google AI Studio
+# AHORA (seguro y profesional):
+import os
+cliente = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+@app.get("/")
+def home():
+    return {"estado": "activo", "mensaje": "El microservicio del agente autónomo está listo para operar."}
+
+@app.get("/ejecutar-agente")
+def ejecutar_agente(tema: str = "Ciberseguridad"):
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        
-        if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail="No se pudo acceder a la web")
+        with sync_playwright() as p:
+            # Lanzamos el navegador en modo headless=True para entornos de servidor (como Render)
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
             
-        soup = BeautifulSoup(response.text, "html.parser")
-        
-        # 1. Extraer Encabezados
-        headings = []
-        for tag in ["h1", "h2", "h3"]:
-            for item in soup.find_all(tag):
-                text = item.get_text(strip=True)
-                if text:
-                    headings.append({"etiqueta": tag.upper(), "texto": text})
-                    
-        # 2. Extraer Enlaces
-        links = []
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            text = a.get_text(strip=True)
-            if href.startswith("http"):
-                links.append({"texto": text or "Sin Texto", "url": href})
-                
-        # La API devuelve los datos estructurados (JSON)
-        return {
-            "estado": "exito",
-            "url_analizada": url,
-            "total_encabezados": len(headings),
-            "total_enlaces": len(links),
-            "datos": {
-                "encabezados": headings,
-                "enlaces": links
+            print(f"🌐 [API] El agente entra a Wikipedia para buscar: {tema}")
+            page.goto("https://es.wikipedia.org")
+            
+            page.fill("input[name='search']", tema)
+            page.press("input[name='search']", "Enter")
+            
+            page.wait_for_selector("p")
+            
+            todos_los_parrafos = page.locator("p").all_inner_texts()
+            parrafos_reales = [texto for texto in todos_los_parrafos if len(texto.strip()) > 20]
+            contenido_bruto = "\n".join(parrafos_reales[:3])
+            
+            browser.close()
+            
+            print("🧠 [API] Procesando información con Inteligencia Artificial...")
+            prompt = f"""
+            Eres un consultor experto. Analiza el siguiente texto obtenido de una búsqueda automatizada sobre '{tema}'
+            y redacta 3 recomendaciones clave o conclusiones estratégicas que una empresa deba conocer.
+            
+            Texto bruto: {contenido_bruto}
+            """
+            
+            # Lógica de reintento ante saturación 503
+            intentos = 3
+            respuesta_texto = ""
+            for intento in range(intentos):
+                try:
+                    respuesta = cliente.models.generate_content(
+                        model='gemini-3.8-flash',
+                        contents=prompt,
+                    )
+                    respuesta_texto = respuesta.text
+                    break
+                except ServerError:
+                    if intento < intentos - 1:
+                        time.sleep(3)
+                    else:
+                        raise HTTPException(status_code=503, detail="Servidores de Google saturados temporalmente.")
+            
+            return {
+                "exito": True,
+                "tema_buscado": tema,
+                "reporte_ia": respuesta_texto
             }
-        }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
