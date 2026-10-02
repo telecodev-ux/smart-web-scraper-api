@@ -28,7 +28,7 @@ def home():
     return {"estado": "activo", "mensaje": "El microservicio del agente autónomo está listo para operar."}
 
 @app.get("/ejecutar-agente")
-def ejecutar_agente(url: str, objetivo: str = "Haz un resumen de esta página"):
+def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digital"):
     try:
         print(f"🕵️ [API] Entrando en la URL: {url}")
         
@@ -36,21 +36,16 @@ def ejecutar_agente(url: str, objetivo: str = "Haz un resumen de esta página"):
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
-            
-            # Vamos a la web que pide el cliente (con tiempo extra por si es lenta)
             page.goto(url, timeout=60000)
-            
-            # Extraemos TODO el texto visible de la página (ignorando el código fuente oculto)
             texto_web = page.inner_text("body")
             browser.close()
 
         # Cortamos un poco el texto por si la web es gigantesca
         texto_limpio = texto_web[:20000] 
         
-        print("🧠 [API] Procesando los datos extraídos con Gemini...")
+        print("🧠 [API] Procesando estrategia comercial con Gemini...")
         
-        # 2. PROCESAMIENTO DINÁMICO CON GEMINI (Uso de cliente.models.generate_content)
-      # 2. PROCESAMIENTO COMERCIAL B2B CON GEMINI
+        # 2. PROCESAMIENTO COMERCIAL B2B CON GEMINI
         prompt = f"""
         Eres un Director Comercial (SDR) experto en B2B de alto nivel.
         He extraído el texto en bruto de la web de una empresa objetivo: {url}
@@ -63,7 +58,7 @@ def ejecutar_agente(url: str, objetivo: str = "Haz un resumen de esta página"):
         ---
         
         Analiza a esta empresa y redacta una estrategia de contacto en formato JSON estricto. 
-        Devuelve ÚNICAMENTE código JSON válido con esta estructura exacta, sin texto adicional:
+        Devuelve ÚNICAMENTE código JSON válido con esta estructura exacta, sin texto adicional ni bloques de marcas de código markdown:
         {{
             "nombre_empresa": "Nombre comercial detectado",
             "a_que_se_dedican": "Resumen de su modelo de negocio en 1 frase",
