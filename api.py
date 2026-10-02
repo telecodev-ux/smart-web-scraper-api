@@ -5,14 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from playwright.sync_api import sync_playwright
 from google import genai
 
-# Inicializamos la aplicación FastAPI
 app = FastAPI(
     title="Agente Autónomo RPA API",
-    description="API industrial de automatización web y procesamiento con IA",
     version="1.0"
 )
 
-# Configuración de seguridad CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -21,7 +18,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Conectamos el cliente de Google GenAI SDK
 cliente = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 @app.get("/")
@@ -33,20 +29,33 @@ def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digita
     try:
         print(f"🕵️ [API] Entrando en la URL: {url}")
         
-        # 1. NAVEGACIÓN UNIVERSAL CON PLAYWRIGHT
+        # 1. SCRAPING ULTRARRÁPIDO CON PLAYWRIGHT
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto(url, timeout=60000)
-            texto_web = page.inner_text("body")
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            
+            # Bloqueamos imágenes, fuentes y CSS para acelerar la carga x10
+            page = context.new_page()
+            page.route("**/*.{png,jpg,jpeg,svg,css,woff,woff2}", lambda route: route.abort())
+            
+            try:
+                # Solo esperamos a que el texto/DOM esté listo (máx 15s)
+                page.goto(url, timeout=15000, wait_until="domcontentloaded")
+                texto_web = page.inner_text("body")
+            except Exception as e_web:
+                browser.close()
+                raise HTTPException(status_code=400, detail=f"Error cargando la web objetivo: {str(e_web)}")
+            
             browser.close()
 
-        # Cortamos el texto para evitar exceso de tokens
-        texto_limpio = texto_web[:20000] 
-        
+        texto_limpio = texto_web[:15000]
+        if not texto_limpio.strip():
+            raise HTTPException(status_code=400, detail="La web no devolvió texto accesible.")
+
         print("🧠 [API] Procesando estrategia comercial con Gemini...")
         
-        # 2. PROCESAMIENTO COMERCIAL B2B CON GEMINI
         prompt = f"""
         Eres un Director Comercial (SDR) experto en B2B de alto nivel.
         He extraído el texto en bruto de la web de una empresa objetivo: {url}
@@ -59,7 +68,7 @@ def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digita
         ---
         
         Analiza a esta empresa y redacta una estrategia de contacto en formato JSON estricto. 
-        Devuelve ÚNICAMENTE código JSON válido con esta estructura exacta, sin texto adicional ni bloques de marcas de código markdown:
+        Devuelve ÚNICAMENTE código JSON válido con esta estructura exacta, sin texto adicional ni bloques markdown:
         {{
             "nombre_empresa": "Nombre comercial detectado",
             "a_que_se_dedican": "Resumen de su modelo de negocio en 1 frase",
@@ -69,28 +78,18 @@ def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digita
         }}
         """
         
-        # Reintentos automáticos en caso de saturación temporal de la API
-        respuesta = None
-        for intento in range(3):
-            try:
-                respuesta = cliente.models.generate_content(
-                    model="gemini-1.5-flash",
-                    contents=prompt,
-                )
-                break
-            except Exception as e:
-                print(f"⚠️ Reintento {intento + 1}/3 por alta demanda: {e}")
-                time.sleep(3)
-
-        if not respuesta:
-            raise HTTPException(status_code=503, detail="El servicio de IA está saturado temporalmente. Por favor reintenta en unos segundos.")
+        respuesta = cliente.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
 
         return {
             "exito": True,
             "url_analizada": url,
-            "objetivo_cliente": objetivo,
             "reporte_ia": respuesta.text
         }
 
+    except HTTPException as he:
+        raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
