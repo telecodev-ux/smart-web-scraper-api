@@ -1,4 +1,5 @@
 import os
+import time
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware  
 from playwright.sync_api import sync_playwright
@@ -40,7 +41,7 @@ def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digita
             texto_web = page.inner_text("body")
             browser.close()
 
-        # Cortamos un poco el texto por si la web es gigantesca
+        # Cortamos el texto para evitar exceso de tokens
         texto_limpio = texto_web[:20000] 
         
         print("🧠 [API] Procesando estrategia comercial con Gemini...")
@@ -68,11 +69,21 @@ def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digita
         }}
         """
         
-        # Usamos gemini-2.5-flash para evitar sobrecargas de cuota
-        respuesta = cliente.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-        )
+        # Reintentos automáticos en caso de saturación temporal de la API
+        respuesta = None
+        for intento in range(3):
+            try:
+                respuesta = cliente.models.generate_content(
+                    model="gemini-3.8-flash",
+                    contents=prompt,
+                )
+                break
+            except Exception as e:
+                print(f"⚠️ Reintento {intento + 1}/3 por alta demanda: {e}")
+                time.sleep(3)
+
+        if not respuesta:
+            raise HTTPException(status_code=503, detail="El servicio de IA está saturado temporalmente. Por favor reintenta en unos segundos.")
 
         return {
             "exito": True,
