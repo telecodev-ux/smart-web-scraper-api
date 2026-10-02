@@ -1,8 +1,10 @@
 import os
+import time
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware  
 from playwright.sync_api import sync_playwright
 from google import genai
+from google.genai import types
 
 # Inicializamos la aplicación FastAPI
 app = FastAPI(
@@ -20,8 +22,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Conectamos el cliente moderno de Google GenAI SDK
-cliente = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+# Conectamos el cliente con reintentos automáticos ante errores 503 o sobrecarga
+cliente = genai.Client(
+    api_key=os.environ.get("GEMINI_API_KEY"),
+    http_options=types.HttpOptions(
+        retry_options=types.HttpRetryOptions(
+            attempts=5  # Reintenta automáticamente hasta 5 veces si Google da 503 o 429
+        )
+    )
+)
 
 @app.get("/")
 def home():
@@ -30,7 +39,7 @@ def home():
 @app.get("/ejecutar-agente")
 def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digital"):
     try:
-        print(f"🕵️ [API] Entrando en la URL: {url}")
+        print(f"🕵️️ [API] Entrando en la URL: {url}")
         
         # 1. NAVEGACIÓN UNIVERSAL CON PLAYWRIGHT
         with sync_playwright() as p:
@@ -68,10 +77,18 @@ def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digita
         }}
         """
         
-        respuesta = cliente.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=prompt,
-        )
+        # Intentamos con el modelo principal gemini-3.8-flash; si falla por saturación, pasamos al modelo de reserva
+        try:
+            respuesta = cliente.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=prompt,
+            )
+        except Exception as error_principal:
+            print(f"⚠️ Modelo principal saturado ({error_principal}). Reintentando con modelo de respaldo...")
+            respuesta = cliente.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+            )
 
         return {
             "exito": True,
