@@ -1,8 +1,8 @@
 import os
-import time
+import re
+import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware  
-from playwright.sync_api import sync_playwright
 from google import genai
 
 app = FastAPI(
@@ -20,67 +20,66 @@ app.add_middleware(
 
 cliente = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
+def extraer_texto_rapido(url):
+    # Cabeceras para simular un navegador real sin abrirlo visualmente
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "es-ES,es;q=0.9"
+    }
+    # Petición ultrarrápida con límite de 10 segundos
+    respuesta = requests.get(url, headers=headers, timeout=10)
+    respuesta.raise_for_status()
+    
+    # Limpieza estructural para extraer solo el texto legible
+    html = respuesta.text
+    html = re.sub(r'<script.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<style.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    texto = re.sub(r'<[^>]+>', ' ', html)
+    texto = re.sub(r'\s+', ' ', texto).strip()
+    return texto
+
 @app.get("/")
 def home():
-    return {"estado": "activo", "mensaje": "El microservicio del agente autónomo está listo para operar."}
+    return {"estado": "activo", "mensaje": "API operativa y ligera."}
 
 @app.get("/ejecutar-agente")
 def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digital"):
     try:
-        print(f"🕵️ [API] Entrando en la URL: {url}")
+        print(f"🕵️ [API] Extrayendo al instante: {url}")
         
-        # 1. EXTRACCIÓN INSTANTÁNEA AL RECIBIR EL PRIMER BYTE
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
-            page = context.new_page()
-            
-            # Cancelar carga de elementos pesados
-            page.route("**/*.{png,jpg,jpeg,svg,css,woff,woff2,gif}", lambda route: route.abort())
-            
-            try:
-                # "commit" extrae el contenido justo al recibir la respuesta HTTP inicial
-                page.goto(url, timeout=30000, wait_until="commit")
-                time.sleep(2) # Pausa corta para permitir el renderizado de texto básico
-                texto_web = page.inner_text("body")
-            except Exception as e_web:
-                browser.close()
-                raise HTTPException(status_code=400, detail=f"Error cargando la web objetivo: {str(e_web)}")
-            
-            browser.close()
+        # 1. EXTRACCIÓN LIGERA Y RÁPIDA (Sin bloqueos de RAM)
+        try:
+            texto_web = extraer_texto_rapido(url)
+        except Exception as e_web:
+            raise HTTPException(status_code=400, detail=f"Error de conexión con la web: {str(e_web)}")
 
         texto_limpio = texto_web[:15000]
         if not texto_limpio.strip():
-            raise HTTPException(status_code=400, detail="La web no devolvió texto accesible.")
-
-        print("🧠 [API] Procesando estrategia comercial con Gemini...")
+            raise HTTPException(status_code=400, detail="La web no tiene texto legible.")
         
+        # 2. IA B2B CON GEMINI
         prompt = f"""
-        Eres un Director Comercial (SDR) experto en B2B de alto nivel.
-        He extraído el texto en bruto de la web de una empresa objetivo: {url}
+        Eres un Director Comercial (SDR) experto en B2B. 
+        He extraído este texto de una empresa objetivo: {url}
+        Servicio a vender: "{objetivo}"
         
-        Nuestra empresa ofrece este servicio/producto: "{objetivo}"
-        
-        Texto extraído de la web objetivo:
+        Texto web:
         ---
         {texto_limpio}
         ---
         
-        Analiza a esta empresa y redacta una estrategia de contacto en formato JSON estricto. 
-        Devuelve ÚNICAMENTE código JSON válido con esta estructura exacta, sin texto adicional ni bloques markdown:
+        Analiza y devuelve ÚNICAMENTE código JSON válido con esta estructura exacta, sin marcas markdown ni texto extra:
         {{
-            "nombre_empresa": "Nombre comercial detectado",
-            "a_que_se_dedican": "Resumen de su modelo de negocio en 1 frase",
-            "angulo_de_venta": "Justificación estratégica de por qué necesitan nuestro servicio",
-            "asunto_email": "Un asunto corto, intrigante y no comercial (máx 5 palabras)",
-            "borrador_email": "Email directo de 3 párrafos cortos. Primer párrafo: rompehielos hiper-personalizado sobre algo específico de su web. Segundo párrafo: el valor de nuestro servicio. Tercer párrafo: llamada a la acción de baja fricción."
+            "nombre_empresa": "Nombre de la empresa",
+            "a_que_se_dedican": "Resumen en 1 frase",
+            "angulo_de_venta": "Justificación táctica",
+            "asunto_email": "Asunto corto",
+            "borrador_email": "Email hiper-personalizado de 3 párrafos."
         }}
         """
         
         respuesta = cliente.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-1.5-flash",
             contents=prompt,
         )
 
