@@ -74,7 +74,7 @@ def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digita
         for intento in range(3):
             try:
                 respuesta = cliente.models.generate_content(
-                    model="gemini-3.8-flash",
+                    model="gemini-1.5-flash",
                     contents=prompt,
                 )
                 break
