@@ -29,20 +29,21 @@ def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digita
     try:
         print(f"🕵️ [API] Entrando en la URL: {url}")
         
-        # 1. SCRAPING ULTRARRÁPIDO CON PLAYWRIGHT
+        # 1. EXTRACCIÓN INSTANTÁNEA AL RECIBIR EL PRIMER BYTE
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             )
-            
-            # Bloqueamos imágenes, fuentes y CSS para acelerar la carga x10
             page = context.new_page()
-            page.route("**/*.{png,jpg,jpeg,svg,css,woff,woff2}", lambda route: route.abort())
+            
+            # Cancelar carga de elementos pesados
+            page.route("**/*.{png,jpg,jpeg,svg,css,woff,woff2,gif}", lambda route: route.abort())
             
             try:
-                # Solo esperamos a que el texto/DOM esté listo (máx 15s)
-                page.goto(url, timeout=15000, wait_until="domcontentloaded")
+                # "commit" extrae el contenido justo al recibir la respuesta HTTP inicial
+                page.goto(url, timeout=30000, wait_until="commit")
+                time.sleep(2) # Pausa corta para permitir el renderizado de texto básico
                 texto_web = page.inner_text("body")
             except Exception as e_web:
                 browser.close()
