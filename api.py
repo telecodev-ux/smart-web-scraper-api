@@ -49,7 +49,7 @@ def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digita
         if not texto_limpio.strip():
             raise HTTPException(status_code=400, detail="La web no tiene texto legible.")
         
-        # 2. IA B2B CON GEMINI
+        # 2. IA B2B CON GEMINI (VERSIÓN 3.8)
         prompt = f"""
         Eres un Director Comercial (SDR) experto en B2B. 
         He extraído este texto de una empresa objetivo: {url}
@@ -70,8 +70,9 @@ def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digita
         }}
         """
         
+        # Restaurado el modelo correcto que admite tu cuenta de Google
         respuesta = cliente.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-3.8-flash",
             contents=prompt,
         )
 
