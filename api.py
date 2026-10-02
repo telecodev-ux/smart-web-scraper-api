@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware  
@@ -20,19 +21,15 @@ app.add_middleware(
 cliente = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 def extraer_texto_infalible(url):
-    # Usamos Jina Reader para saltarnos los bloqueos de IP corporativos
     jina_url = f"https://r.jina.ai/{url}"
-    headers = {
-        "Accept": "text/plain"
-    }
-    # Jina hace el trabajo duro, le damos 20 segundos
+    headers = {"Accept": "text/plain"}
     respuesta = requests.get(jina_url, headers=headers, timeout=20)
     respuesta.raise_for_status()
     return respuesta.text
 
 @app.get("/")
 def home():
-    return {"estado": "activo", "mensaje": "API operativa con motor antibloqueos."}
+    return {"estado": "activo", "mensaje": "API operativa con reintentos automáticos."}
 
 @app.get("/ejecutar-agente")
 def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digital"):
@@ -49,7 +46,7 @@ def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digita
         if not texto_limpio.strip():
             raise HTTPException(status_code=400, detail="La web no tiene texto legible.")
         
-        # 2. IA B2B CON GEMINI (VERSIÓN 3.8)
+        # 2. IA B2B CON REINTENTOS AUTOMÁTICOS ANTE SATURACIÓN (503)
         prompt = f"""
         Eres un Director Comercial (SDR) experto en B2B. 
         He extraído este texto de una empresa objetivo: {url}
@@ -70,11 +67,21 @@ def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digita
         }}
         """
         
-        # Restaurado el modelo correcto que admite tu cuenta de Google
-        respuesta = cliente.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=prompt,
-        )
+        respuesta = None
+        for intento in range(3):
+            try:
+                respuesta = cliente.models.generate_content(
+                    model="gemini-3.8-flash",
+                    contents=prompt,
+                )
+                if respuesta and respuesta.text:
+                    break
+            except Exception as e:
+                print(f"⚠️ Reintento {intento + 1}/3 por alta demanda: {e}")
+                time.sleep(3)
+
+        if not respuesta or not respuesta.text:
+            raise HTTPException(status_code=503, detail="El servicio de IA está saturado. Vuelve a darle al botón en unos segundos.")
 
         return {
             "exito": True,
