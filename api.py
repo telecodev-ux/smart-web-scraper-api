@@ -1,5 +1,4 @@
 import os
-import re
 import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware  
@@ -20,38 +19,31 @@ app.add_middleware(
 
 cliente = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-def extraer_texto_rapido(url):
-    # Cabeceras para simular un navegador real sin abrirlo visualmente
+def extraer_texto_infalible(url):
+    # Usamos Jina Reader para saltarnos los bloqueos de IP corporativos
+    jina_url = f"https://r.jina.ai/{url}"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "es-ES,es;q=0.9"
+        "Accept": "text/plain"
     }
-    # Petición ultrarrápida con límite de 10 segundos
-    respuesta = requests.get(url, headers=headers, timeout=10)
+    # Jina hace el trabajo duro, le damos 20 segundos
+    respuesta = requests.get(jina_url, headers=headers, timeout=20)
     respuesta.raise_for_status()
-    
-    # Limpieza estructural para extraer solo el texto legible
-    html = respuesta.text
-    html = re.sub(r'<script.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
-    html = re.sub(r'<style.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
-    texto = re.sub(r'<[^>]+>', ' ', html)
-    texto = re.sub(r'\s+', ' ', texto).strip()
-    return texto
+    return respuesta.text
 
 @app.get("/")
 def home():
-    return {"estado": "activo", "mensaje": "API operativa y ligera."}
+    return {"estado": "activo", "mensaje": "API operativa con motor antibloqueos."}
 
 @app.get("/ejecutar-agente")
 def ejecutar_agente(url: str, objetivo: str = "Servicios de optimización digital"):
     try:
-        print(f"🕵️ [API] Extrayendo al instante: {url}")
+        print(f"🕵️ [API] Extrayendo mediante proxy: {url}")
         
-        # 1. EXTRACCIÓN LIGERA Y RÁPIDA (Sin bloqueos de RAM)
+        # 1. EXTRACCIÓN ANTI-BLOQUEOS
         try:
-            texto_web = extraer_texto_rapido(url)
+            texto_web = extraer_texto_infalible(url)
         except Exception as e_web:
-            raise HTTPException(status_code=400, detail=f"Error de conexión con la web: {str(e_web)}")
+            raise HTTPException(status_code=400, detail=f"Bloqueo absoluto en la web: {str(e_web)}")
 
         texto_limpio = texto_web[:15000]
         if not texto_limpio.strip():
